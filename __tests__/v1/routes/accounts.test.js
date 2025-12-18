@@ -223,7 +223,10 @@ describe('Accounts Routes', () => {
 
       expect(mockBudget.getAccountBalance).toHaveBeenCalledWith('acc1', undefined);
       expect(mockRes.json).toHaveBeenCalledWith({
-        data: 5000,
+        data: {
+          balance: 5000,
+          balance_display: expect.any(String),
+        },
       });
     });
 
@@ -240,7 +243,10 @@ describe('Accounts Routes', () => {
 
       expect(mockBudget.getAccountBalance).toHaveBeenCalledWith('acc1', '2023-08-15');
       expect(mockRes.json).toHaveBeenCalledWith({
-        data: 3500,
+        data: {
+          balance: 3500,
+          balance_display: expect.any(String),
+        },
       });
     });
 
@@ -255,7 +261,10 @@ describe('Accounts Routes', () => {
       await handler(mockReq, mockRes, mockNext);
 
       expect(mockRes.json).toHaveBeenCalledWith({
-        data: 0,
+        data: {
+          balance: 0,
+          balance_display: expect.any(String),
+        },
       });
     });
 
@@ -301,9 +310,9 @@ describe('Accounts Routes', () => {
 
       expect(mockRes.json).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          '2023-08-01': 1000,
-          '2023-08-02': 1100,
-          '2023-08-03': 1050,
+          '2023-08-01': { balance: 1000, balance_display: expect.any(String) },
+          '2023-08-02': { balance: 1100, balance_display: expect.any(String) },
+          '2023-08-03': { balance: 1050, balance_display: expect.any(String) },
         }),
       });
     });

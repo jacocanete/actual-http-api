@@ -69,3 +69,97 @@ exports.validatePaginationParameters = (req) => {
     throw new Error('page query parameter is required when using pagination');
   }
 }
+
+// Money fields that should have _display versions added
+const MONEY_FIELDS = [
+  'amount',
+  'balance',
+  'spent',
+  'budgeted',
+  'totalBudgeted',
+  'totalSpent',
+  'totalBalance',
+  'totalIncome',
+  'incomeAvailable',
+  'lastMonthOverspent',
+  'forNextMonth',
+  'toBudget',
+  'fromLastMonth'
+];
+
+/**
+ * Format a single amount from cents to display string
+ * @param {number} cents - Amount in cents
+ * @param {string} currencySymbol - Currency symbol to use
+ * @returns {string} Formatted amount string
+ */
+function formatSingleAmount(cents, currencySymbol) {
+  const isNegative = cents < 0;
+  const absolute = Math.abs(cents);
+  const dollars = (absolute / 100).toFixed(2);
+  const formatted = dollars.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return isNegative ? `-${currencySymbol}${formatted}` : `${currencySymbol}${formatted}`;
+}
+
+/**
+ * Format an amount (single or range) from cents to display string
+ * @param {number|object} amount - Amount in cents or range object {num1, num2}
+ * @param {string} currencySymbol - Currency symbol to use
+ * @returns {string|null} Formatted amount string
+ */
+exports.formatAmountDisplay = (amount, currencySymbol = 'P') => {
+  if (amount === null || amount === undefined) return null;
+
+  // Handle range objects (for schedules with isbetween)
+  if (typeof amount === 'object' && amount.num1 !== undefined && amount.num2 !== undefined) {
+    const display1 = formatSingleAmount(amount.num1, currencySymbol);
+    const display2 = formatSingleAmount(amount.num2, currencySymbol);
+    return `${display1} - ${display2}`;
+  }
+
+  if (typeof amount !== 'number') return null;
+
+  return formatSingleAmount(amount, currencySymbol);
+}
+
+/**
+ * Recursively add _display fields to objects containing money amounts
+ * @param {any} data - Data to transform (object, array, or primitive)
+ * @param {string} currencySymbol - Currency symbol to use
+ * @returns {any} Transformed data with _display fields added
+ */
+exports.addDisplayFields = (data, currencySymbol = 'P') => {
+  if (data === null || data === undefined) return data;
+
+  // Handle arrays
+  if (Array.isArray(data)) {
+    return data.map(item => exports.addDisplayFields(item, currencySymbol));
+  }
+
+  // Handle objects
+  if (typeof data === 'object') {
+    const result = { ...data };
+
+    for (const key of Object.keys(result)) {
+      const value = result[key];
+
+      // Check if this is a money field
+      if (MONEY_FIELDS.includes(key)) {
+        const displayValue = exports.formatAmountDisplay(value, currencySymbol);
+        if (displayValue !== null) {
+          result[`${key}_display`] = displayValue;
+        }
+      }
+
+      // Recursively process nested objects/arrays
+      if (typeof value === 'object' && value !== null) {
+        result[key] = exports.addDisplayFields(value, currencySymbol);
+      }
+    }
+
+    return result;
+  }
+
+  // Return primitives as-is
+  return data;
+}

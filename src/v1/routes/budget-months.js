@@ -1,4 +1,5 @@
-const { isEmpty } = require('../../utils/utils');
+const { isEmpty, addDisplayFields } = require('../../utils/utils');
+const { config } = require('../../config/config');
 
 /**
  * @swagger
@@ -225,7 +226,8 @@ module.exports = (router) => {
    */
   router.get('/budgets/:budgetSyncId/months/:month', async (req, res, next) => {
     try {
-      res.json({'data': await res.locals.budget.getMonth(req.params.month)});
+      const monthData = await res.locals.budget.getMonth(req.params.month);
+      res.json({'data': addDisplayFields(monthData, config.currencySymbol)});
     } catch(err) {
       next(err);
     }
@@ -277,7 +279,8 @@ module.exports = (router) => {
    */
   router.get('/budgets/:budgetSyncId/months/:month/categories', async (req, res, next) => {
     try {
-      res.json({'data': await res.locals.budget.getMonthCategories(req.params.month)});
+      const categories = await res.locals.budget.getMonthCategories(req.params.month);
+      res.json({'data': addDisplayFields(categories, config.currencySymbol)});
     } catch(err) {
       next(err);
     }
@@ -380,7 +383,7 @@ module.exports = (router) => {
       return;
     }
     if (desiredCategory) {
-      res.json({'data': desiredCategory});
+      res.json({'data': addDisplayFields(desiredCategory, config.currencySymbol)});
     } else {
       next(new Error('Category not found'));
     }
@@ -457,7 +460,8 @@ module.exports = (router) => {
    */
   router.get('/budgets/:budgetSyncId/months/:month/categorygroups', async (req, res, next) => {
     try {
-      res.json({'data': await res.locals.budget.getMonthCategoryGroups(req.params.month)});
+      const categoryGroups = await res.locals.budget.getMonthCategoryGroups(req.params.month);
+      res.json({'data': addDisplayFields(categoryGroups, config.currencySymbol)});
     } catch(err) {
       next(err);
     }
@@ -523,7 +527,7 @@ module.exports = (router) => {
       return;
     }
     if (desiredCategoryGroup) {
-      res.json({'data': desiredCategoryGroup});
+      res.json({'data': addDisplayFields(desiredCategoryGroup, config.currencySymbol)});
     } else {
       next(new Error('Category group not found'));
     }

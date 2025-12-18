@@ -1,4 +1,5 @@
-const { validatePaginationParameters, paginate } = require('../../utils/utils');
+const { validatePaginationParameters, paginate, addDisplayFields } = require('../../utils/utils');
+const { config } = require('../../config/config');
 
 /**
  * @swagger
@@ -244,6 +245,7 @@ module.exports = (router) => {
   router.get('/budgets/:budgetSyncId/schedules', async (req, res, next) => {
     try {
       let allSchedules = await res.locals.budget.getSchedules();
+      allSchedules = addDisplayFields(allSchedules, config.currencySymbol);
       if (req.query.page || req.query.limit) {
         validatePaginationParameters(req);
         res.json({ 'data': paginate(allSchedules, parseInt(req.query.page), parseInt(req.query.limit)) });
@@ -377,7 +379,7 @@ module.exports = (router) => {
       if (!schedule) {
         throw new Error(`Schedule with id '${req.params.scheduleId}' not found`);
       }
-      res.json({ 'data': schedule });
+      res.json({ 'data': addDisplayFields(schedule, config.currencySymbol) });
     } catch (err) {
       next(err);
     }
@@ -386,7 +388,8 @@ module.exports = (router) => {
   router.patch('/budgets/:budgetSyncId/schedules/:scheduleId', async (req, res, next) => {
     try {
       validateScheduleBody(req.body);
-      res.json({ 'data': await res.locals.budget.updateSchedule(req.params.scheduleId, req.body.schedule) });
+      const updatedSchedule = await res.locals.budget.updateSchedule(req.params.scheduleId, req.body.schedule);
+      res.json({ 'data': addDisplayFields(updatedSchedule, config.currencySymbol) });
     } catch (err) {
       next(err);
     }

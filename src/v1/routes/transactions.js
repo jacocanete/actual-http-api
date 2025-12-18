@@ -1,4 +1,5 @@
-const { isEmpty, paginate, validatePaginationParameters } = require('../../utils/utils');
+const { isEmpty, paginate, validatePaginationParameters, addDisplayFields } = require('../../utils/utils');
+const { config } = require('../../config/config');
 
 /**
  * @swagger
@@ -200,6 +201,7 @@ module.exports = (router) => {
       }
       await validateAccountExists(res, req.params.accountId);
       let allTransactions = await res.locals.budget.getTransactions(req.params.accountId, req.query.since_date, req.query.until_date);
+      allTransactions = addDisplayFields(allTransactions, config.currencySymbol);
       if (req.query.page || req.query.limit) {
         validatePaginationParameters(req);
         res.json({ 'data': paginate(allTransactions, parseInt(req.query.page), parseInt(req.query.limit)) });
