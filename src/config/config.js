@@ -22,6 +22,7 @@ exports.config = {
   nodeEnv: process.env.NODE_ENV,
   port: process.env.PORT || 5007,
   apiKey: loadMandatorySecret("API_KEY"),
+  currencySymbol: process.env.CURRENCY_SYMBOL || 'P',
   actual: {
     dataDir: process.env.ACTUAL_DATA_DIR,
     serverUrl: process.env.ACTUAL_SERVER_URL,

@@ -11,6 +11,8 @@ const {
   parseNumericBoolean,
   paginate,
   validatePaginationParameters,
+  formatAmountDisplay,
+  addDisplayFields,
 } = require('../../src/utils/utils');
 
 describe('Utils', () => {
@@ -227,6 +229,139 @@ describe('Utils', () => {
       const req = { query: { limit: 10, page: 1 } };
 
       expect(() => validatePaginationParameters(req)).not.toThrow();
+    });
+  });
+
+  describe('formatAmountDisplay', () => {
+    it('should format positive amount correctly', () => {
+      expect(formatAmountDisplay(500000, 'P')).toBe('P5,000.00');
+    });
+
+    it('should format negative amount correctly', () => {
+      expect(formatAmountDisplay(-13341690, 'P')).toBe('-P133,416.90');
+    });
+
+    it('should format zero correctly', () => {
+      expect(formatAmountDisplay(0, 'P')).toBe('P0.00');
+    });
+
+    it('should format small amounts correctly', () => {
+      expect(formatAmountDisplay(50, 'P')).toBe('P0.50');
+      expect(formatAmountDisplay(5, 'P')).toBe('P0.05');
+    });
+
+    it('should format large amounts with thousand separators', () => {
+      expect(formatAmountDisplay(123456789, '$')).toBe('$1,234,567.89');
+    });
+
+    it('should handle range objects', () => {
+      expect(formatAmountDisplay({ num1: 10000, num2: 20000 }, 'P')).toBe('P100.00 - P200.00');
+    });
+
+    it('should handle range objects with negative values', () => {
+      expect(formatAmountDisplay({ num1: -20000, num2: -10000 }, 'P')).toBe('-P200.00 - -P100.00');
+    });
+
+    it('should return null for null input', () => {
+      expect(formatAmountDisplay(null, 'P')).toBeNull();
+    });
+
+    it('should return null for undefined input', () => {
+      expect(formatAmountDisplay(undefined, 'P')).toBeNull();
+    });
+
+    it('should return null for non-numeric input', () => {
+      expect(formatAmountDisplay('invalid', 'P')).toBeNull();
+    });
+
+    it('should use default currency symbol', () => {
+      expect(formatAmountDisplay(10000)).toBe('P100.00');
+    });
+  });
+
+  describe('addDisplayFields', () => {
+    it('should add display field for amount', () => {
+      const result = addDisplayFields({ amount: -7374 }, 'P');
+      expect(result.amount).toBe(-7374);
+      expect(result.amount_display).toBe('-P73.74');
+    });
+
+    it('should add display field for balance', () => {
+      const result = addDisplayFields({ balance: 500000 }, 'P');
+      expect(result.balance).toBe(500000);
+      expect(result.balance_display).toBe('P5,000.00');
+    });
+
+    it('should add display fields for multiple money fields', () => {
+      const result = addDisplayFields({
+        budgeted: 100000,
+        spent: -50000,
+        balance: 50000,
+      }, 'P');
+      expect(result.budgeted_display).toBe('P1,000.00');
+      expect(result.spent_display).toBe('-P500.00');
+      expect(result.balance_display).toBe('P500.00');
+    });
+
+    it('should process nested objects', () => {
+      const result = addDisplayFields({
+        category: {
+          budgeted: 100000,
+          spent: -25000,
+        }
+      }, 'P');
+      expect(result.category.budgeted_display).toBe('P1,000.00');
+      expect(result.category.spent_display).toBe('-P250.00');
+    });
+
+    it('should process arrays', () => {
+      const result = addDisplayFields([
+        { amount: 10000 },
+        { amount: -20000 },
+      ], 'P');
+      expect(result[0].amount_display).toBe('P100.00');
+      expect(result[1].amount_display).toBe('-P200.00');
+    });
+
+    it('should process deeply nested structures', () => {
+      const result = addDisplayFields({
+        month: '2024-01',
+        totalSpent: -500000,
+        categoryGroups: [
+          {
+            name: 'Essentials',
+            spent: -300000,
+            categories: [
+              { name: 'Groceries', spent: -150000 },
+              { name: 'Utilities', spent: -150000 },
+            ]
+          }
+        ]
+      }, 'P');
+      expect(result.totalSpent_display).toBe('-P5,000.00');
+      expect(result.categoryGroups[0].spent_display).toBe('-P3,000.00');
+      expect(result.categoryGroups[0].categories[0].spent_display).toBe('-P1,500.00');
+    });
+
+    it('should not add display field for non-money fields', () => {
+      const result = addDisplayFields({ id: 'abc123', name: 'Test' }, 'P');
+      expect(result.id_display).toBeUndefined();
+      expect(result.name_display).toBeUndefined();
+    });
+
+    it('should handle null and undefined', () => {
+      expect(addDisplayFields(null, 'P')).toBeNull();
+      expect(addDisplayFields(undefined, 'P')).toBeUndefined();
+    });
+
+    it('should return primitives unchanged', () => {
+      expect(addDisplayFields(123, 'P')).toBe(123);
+      expect(addDisplayFields('string', 'P')).toBe('string');
+    });
+
+    it('should use default currency symbol', () => {
+      const result = addDisplayFields({ amount: 10000 });
+      expect(result.amount_display).toBe('P100.00');
     });
   });
 });

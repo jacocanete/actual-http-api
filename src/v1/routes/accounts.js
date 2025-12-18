@@ -1,5 +1,6 @@
 
-const { isEmpty, formatDateToISOString } = require('../../utils/utils');
+const { isEmpty, formatDateToISOString, addDisplayFields, formatAmountDisplay } = require('../../utils/utils');
+const { config } = require('../../config/config');
 
 /**
  * @swagger
@@ -184,10 +185,13 @@ module.exports = (router) => {
    */                                                                                                                                                                                                                                       
   router.get('/budgets/:budgetSyncId/accounts/:accountId/balance', async (req, res, next) => {
     try {
-      const balance = await res.locals.budget.getAccountBalance(req.params.accountId, req.query.cutoff_date);                                                                                                                                                      
-      if (balance !== undefined) {           
-        // Removing any additional field in the balance response                                                                                                                                                                                                             
-        res.json({ data: balance || 0 });
+      const balance = await res.locals.budget.getAccountBalance(req.params.accountId, req.query.cutoff_date);
+      if (balance !== undefined) {
+        const balanceValue = balance || 0;
+        res.json({ data: {
+          balance: balanceValue,
+          balance_display: formatAmountDisplay(balanceValue, config.currencySymbol)
+        }});
       } else {
         throw new Error('Account not found');
       }
@@ -244,8 +248,11 @@ module.exports = (router) => {
       let current = new Date(start);
       while (current <= end) {
         const currentDate = formatDateToISOString(current);
-        dailyBalance[currentDate] =
-          (await res.locals.budget.getAccountBalance(req.params.accountId, currentDate)) || 0;
+        const balanceValue = (await res.locals.budget.getAccountBalance(req.params.accountId, currentDate)) || 0;
+        dailyBalance[currentDate] = {
+          balance: balanceValue,
+          balance_display: formatAmountDisplay(balanceValue, config.currencySymbol)
+        };
         current.setDate(current.getDate() + 1);
       }
       res.json({ data: dailyBalance });
