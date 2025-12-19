@@ -14,6 +14,7 @@ const {
   formatAmountDisplay,
   addDisplayFields,
   validateAmountFields,
+  stripAmountMajor,
 } = require('../../src/utils/utils');
 
 describe('Utils', () => {
@@ -431,6 +432,33 @@ describe('Utils', () => {
     it('should handle rounding for decimal amounts', () => {
       // 73.74 * 100 = 7374
       expect(() => validateAmountFields({ amount: -7374, amount_major: -73.74 })).not.toThrow();
+    });
+  });
+
+  describe('stripAmountMajor', () => {
+    it('should remove amount_major from object', () => {
+      const result = stripAmountMajor({ amount: -5000, amount_major: -50, date: '2024-01-01' });
+      expect(result).toEqual({ amount: -5000, date: '2024-01-01' });
+      expect(result.amount_major).toBeUndefined();
+    });
+
+    it('should return object unchanged if no amount_major', () => {
+      const input = { amount: -5000, date: '2024-01-01' };
+      const result = stripAmountMajor(input);
+      expect(result).toEqual(input);
+    });
+
+    it('should handle null input', () => {
+      expect(stripAmountMajor(null)).toBeNull();
+    });
+
+    it('should handle undefined input', () => {
+      expect(stripAmountMajor(undefined)).toBeUndefined();
+    });
+
+    it('should handle non-object input', () => {
+      expect(stripAmountMajor('string')).toBe('string');
+      expect(stripAmountMajor(123)).toBe(123);
     });
   });
 });

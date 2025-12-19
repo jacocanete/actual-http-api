@@ -205,7 +205,12 @@ describe('Schedules Routes', () => {
 
       await handler(mockReq, mockRes, mockNext);
 
-      expect(mockBudget.createSchedule).toHaveBeenCalledWith(mockReq.body.schedule);
+      // amount_major should be stripped before sending to API
+      expect(mockBudget.createSchedule).toHaveBeenCalledWith({
+        name: 'New Schedule',
+        amount: -100000,
+        date: { frequency: 'monthly', start: '2024-01-01', endMode: 'never' },
+      });
       expect(mockRes.json).toHaveBeenCalledWith({
         data: 'new-schedule-id',
       });
@@ -251,7 +256,11 @@ describe('Schedules Routes', () => {
 
       await handler(mockReq, mockRes, mockNext);
 
-      expect(mockBudget.updateSchedule).toHaveBeenCalledWith('schedule1', mockReq.body.schedule);
+      // amount_major should be stripped before sending to API
+      expect(mockBudget.updateSchedule).toHaveBeenCalledWith('schedule1', {
+        name: 'Updated Rent',
+        amount: -160000,
+      });
       expect(mockRes.json).toHaveBeenCalledWith({
         data: expect.objectContaining({ id: 'schedule1' }),
       });
