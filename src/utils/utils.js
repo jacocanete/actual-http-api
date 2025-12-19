@@ -163,3 +163,51 @@ exports.addDisplayFields = (data, currencySymbol = 'P') => {
   // Return primitives as-is
   return data;
 }
+
+/**
+ * Validate that amount (cents) and amount_major (pesos) are both provided and match
+ * @param {object} data - Object containing amount and amount_major fields
+ * @param {string} fieldName - Name of the parent object for error messages (e.g., 'transaction', 'schedule')
+ * @throws {Error} If validation fails
+ */
+exports.validateAmountFields = (data, fieldName = 'request') => {
+  if (data.amount === undefined && data.amount_major === undefined) {
+    // Neither provided - that's okay, amount might be optional
+    return;
+  }
+
+  if (data.amount !== undefined && data.amount_major === undefined) {
+    throw new Error(`${fieldName} must include both 'amount' (cents) and 'amount_major' (pesos) fields`);
+  }
+
+  if (data.amount === undefined && data.amount_major !== undefined) {
+    throw new Error(`${fieldName} must include both 'amount' (cents) and 'amount_major' (pesos) fields`);
+  }
+
+  // Handle range objects for schedules with isbetween
+  if (typeof data.amount === 'object' && data.amount.num1 !== undefined) {
+    if (typeof data.amount_major !== 'object' || data.amount_major.num1 === undefined) {
+      throw new Error(`${fieldName} amount_major must be a range object when amount is a range`);
+    }
+
+    const expectedNum1 = Math.round(data.amount_major.num1 * 100);
+    const expectedNum2 = Math.round(data.amount_major.num2 * 100);
+
+    if (data.amount.num1 !== expectedNum1 || data.amount.num2 !== expectedNum2) {
+      throw new Error(
+        `${fieldName} amount mismatch: amount.num1 (${data.amount.num1}) should equal amount_major.num1 * 100 (${expectedNum1}), ` +
+        `and amount.num2 (${data.amount.num2}) should equal amount_major.num2 * 100 (${expectedNum2})`
+      );
+    }
+    return;
+  }
+
+  // Standard single amount validation
+  const expectedCents = Math.round(data.amount_major * 100);
+
+  if (data.amount !== expectedCents) {
+    throw new Error(
+      `${fieldName} amount mismatch: amount (${data.amount} cents) does not match amount_major * 100 (${data.amount_major} × 100 = ${expectedCents} cents)`
+    );
+  }
+}

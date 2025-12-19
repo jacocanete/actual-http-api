@@ -13,6 +13,7 @@ const {
   validatePaginationParameters,
   formatAmountDisplay,
   addDisplayFields,
+  validateAmountFields,
 } = require('../../src/utils/utils');
 
 describe('Utils', () => {
@@ -362,6 +363,74 @@ describe('Utils', () => {
     it('should use default currency symbol', () => {
       const result = addDisplayFields({ amount: 10000 });
       expect(result.amount_display).toBe('P100.00');
+    });
+  });
+
+  describe('validateAmountFields', () => {
+    it('should pass when both amount and amount_major are not provided', () => {
+      expect(() => validateAmountFields({})).not.toThrow();
+    });
+
+    it('should pass when both amount and amount_major match', () => {
+      expect(() => validateAmountFields({ amount: -40000, amount_major: -400 })).not.toThrow();
+    });
+
+    it('should pass when both are positive and match', () => {
+      expect(() => validateAmountFields({ amount: 12345, amount_major: 123.45 })).not.toThrow();
+    });
+
+    it('should throw when only amount is provided', () => {
+      expect(() => validateAmountFields({ amount: -40000 }, 'transaction')).toThrow(
+        "transaction must include both 'amount' (cents) and 'amount_major' (pesos) fields"
+      );
+    });
+
+    it('should throw when only amount_major is provided', () => {
+      expect(() => validateAmountFields({ amount_major: -400 }, 'transaction')).toThrow(
+        "transaction must include both 'amount' (cents) and 'amount_major' (pesos) fields"
+      );
+    });
+
+    it('should throw when amount and amount_major do not match', () => {
+      expect(() => validateAmountFields({ amount: -400, amount_major: -400 }, 'transaction')).toThrow(
+        'transaction amount mismatch: amount (-400 cents) does not match amount_major * 100 (-400 × 100 = -40000 cents)'
+      );
+    });
+
+    it('should handle range objects when both match', () => {
+      expect(() => validateAmountFields({
+        amount: { num1: -10000, num2: -20000 },
+        amount_major: { num1: -100, num2: -200 }
+      })).not.toThrow();
+    });
+
+    it('should throw when range objects do not match', () => {
+      expect(() => validateAmountFields({
+        amount: { num1: -100, num2: -200 },
+        amount_major: { num1: -100, num2: -200 }
+      }, 'schedule')).toThrow(
+        'schedule amount mismatch'
+      );
+    });
+
+    it('should throw when amount is range but amount_major is not', () => {
+      expect(() => validateAmountFields({
+        amount: { num1: -10000, num2: -20000 },
+        amount_major: -100
+      }, 'schedule')).toThrow(
+        'schedule amount_major must be a range object when amount is a range'
+      );
+    });
+
+    it('should use default field name in error message', () => {
+      expect(() => validateAmountFields({ amount: -40000 })).toThrow(
+        "request must include both 'amount' (cents) and 'amount_major' (pesos) fields"
+      );
+    });
+
+    it('should handle rounding for decimal amounts', () => {
+      // 73.74 * 100 = 7374
+      expect(() => validateAmountFields({ amount: -7374, amount_major: -73.74 })).not.toThrow();
     });
   });
 });
