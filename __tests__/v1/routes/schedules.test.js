@@ -198,6 +198,7 @@ describe('Schedules Routes', () => {
         schedule: {
           name: 'New Schedule',
           amount: -100000,
+          amount_major: -1000,
           date: { frequency: 'monthly', start: '2024-01-01', endMode: 'never' },
         },
       };
@@ -244,6 +245,7 @@ describe('Schedules Routes', () => {
         schedule: {
           name: 'Updated Rent',
           amount: -160000,
+          amount_major: -1600,
         },
       };
 

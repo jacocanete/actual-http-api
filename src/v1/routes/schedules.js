@@ -1,4 +1,4 @@
-const { validatePaginationParameters, paginate, addDisplayFields } = require('../../utils/utils');
+const { validatePaginationParameters, paginate, addDisplayFields, validateAmountFields } = require('../../utils/utils');
 const { config } = require('../../config/config');
 
 /**
@@ -96,7 +96,7 @@ const { config } = require('../../config/config');
  *                   type: number
  *                 num2:
  *                   type: number
- *           description: Amount or range for isbetween
+ *           description: Amount in cents or range for isbetween
  *         amountOp:
  *           type: string
  *           enum: ['is', 'isapprox', 'isbetween']
@@ -135,7 +135,17 @@ const { config } = require('../../config/config');
  *                   type: number
  *                 num2:
  *                   type: number
- *           description: Amount or range for isbetween
+ *           description: Amount in cents or range for isbetween. When provided, must be accompanied by amount_major.
+ *         amount_major:
+ *           oneOf:
+ *             - type: number
+ *             - type: object
+ *               properties:
+ *                 num1:
+ *                   type: number
+ *                 num2:
+ *                   type: number
+ *           description: Amount in major currency units (pesos). Required when amount is provided. Must equal amount/100.
  *         amountOp:
  *           type: string
  *           enum: ['is', 'isapprox', 'isbetween']
@@ -215,6 +225,7 @@ module.exports = (router) => {
    *                   payee: '6740d5c1-5a89-4fa0-a35c-910e6da86e8r'
    *                   account: '9787f2b1-d145-4afc-95b5-8f39ac68f8h5'
    *                   amount: -150000
+   *                   amount_major: -1500
    *                   amountOp: 'is'
    *                   date:
    *                     frequency: 'monthly'
@@ -327,6 +338,7 @@ module.exports = (router) => {
    *               - schedule:
    *                   name: 'Updated Rent Payment'
    *                   amount: -160000
+   *                   amount_major: -1600
    *     responses:
    *       '200':
    *         description: Schedule updated
@@ -409,4 +421,5 @@ function validateScheduleBody(body) {
   if (!body || !body.schedule) {
     throw new Error('Schedule information is required');
   }
+  validateAmountFields(body.schedule, 'schedule');
 }

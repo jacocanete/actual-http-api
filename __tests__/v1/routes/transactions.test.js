@@ -235,7 +235,8 @@ describe('Transactions Routes', () => {
       mockReq.body = {
         transaction: {
           date: '2023-08-01',
-          amount: -50,
+          amount: -5000,
+          amount_major: -50,
           payee_name: 'Store',
           account: 'acc1',
         },
@@ -265,7 +266,8 @@ describe('Transactions Routes', () => {
       mockReq.body = {
         transaction: {
           date: '2023-08-01',
-          amount: -50,
+          amount: -5000,
+          amount_major: -50,
           account: 'acc1',
         },
       };
@@ -348,13 +350,15 @@ describe('Transactions Routes', () => {
         transactions: [
           {
             date: '2023-08-01',
-            amount: -50,
+            amount: -5000,
+            amount_major: -50,
             payee_name: 'Store',
             account: 'acc1',
           },
           {
             date: '2023-08-02',
-            amount: -75,
+            amount: -7500,
+            amount_major: -75,
             payee_name: 'Gas',
             account: 'acc1',
           },
@@ -420,7 +424,8 @@ describe('Transactions Routes', () => {
         transactions: [
           {
             date: '2023-08-01',
-            amount: -50,
+            amount: -5000,
+            amount_major: -50,
             imported_id: 'ext-1',
             account: 'acc1',
           },
@@ -469,7 +474,8 @@ describe('Transactions Routes', () => {
         transaction: {
           account: 'acc1',
           date: '2023-08-01',
-          amount: -100,
+          amount: -10000,
+          amount_major: -100,
           notes: 'Updated note',
         },
       };
@@ -594,7 +600,8 @@ describe('Transactions Routes', () => {
       mockReq.body = {
         transaction: {
           date: '2023-08-01',
-          amount: -50,
+          amount: -5000,
+          amount_major: -50,
           account: 'acc1',
         },
       };
@@ -613,7 +620,7 @@ describe('Transactions Routes', () => {
       const handler = handlers['PATCH /budgets/:budgetSyncId/transactions/:transactionId'];
       mockReq.params.transactionId = 'txn1';
       mockReq.body = {
-        transaction: { amount: -100 },
+        transaction: { amount: -10000, amount_major: -100 },
       };
       const error = new Error('Transaction not found');
       mockBudget.updateTransaction.mockRejectedValueOnce(error);

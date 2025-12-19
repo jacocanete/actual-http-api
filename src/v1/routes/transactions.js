@@ -1,4 +1,4 @@
-const { isEmpty, paginate, validatePaginationParameters, addDisplayFields } = require('../../utils/utils');
+const { isEmpty, paginate, validatePaginationParameters, addDisplayFields, validateAmountFields } = require('../../utils/utils');
 const { config } = require('../../config/config');
 
 /**
@@ -58,6 +58,10 @@ const { config } = require('../../config/config');
  *           type: string
  *         amount:
  *           type: integer
+ *           description: Amount in cents (e.g., -40000 for P400.00 expense). When creating/updating, must be accompanied by amount_major.
+ *         amount_major:
+ *           type: number
+ *           description: Amount in major currency units (e.g., -400 for P400.00 expense). Required when amount is provided. Must equal amount/100.
  *         payee:
  *           type: string
  *         payee_name:
@@ -175,6 +179,7 @@ module.exports = (router) => {
    *                   account: "729cb492-4eab-468b-9522-75d455cded22"
    *                   category: "9fa2550c-c3ff-498b-8df6-e0fbe2a62e0e"
    *                   amount: -7374
+   *                   amount_major: -73.74
    *                   payee_name: "Remitly"
    *                   date: "2023-06-23"
    *                   cleared: false
@@ -266,6 +271,7 @@ module.exports = (router) => {
    *                 - account: "729cb492-4eab-468b-9522-75d455cded22"
    *                   category: "9fa2550c-c3ff-498b-8df6-e0fbe2a62e0e"
    *                   amount: -7374
+   *                   amount_major: -73.74
    *                   payee_name: "Remitly"
    *                   date: "2023-06-23"
    *                   cleared: false
@@ -328,6 +334,7 @@ module.exports = (router) => {
    *                 - account: "729cb492-4eab-468b-9522-75d455cded22"
    *                   category: "9fa2550c-c3ff-498b-8df6-e0fbe2a62e0e"
    *                   amount: -7374
+   *                   amount_major: -73.74
    *                   payee_name: "Remitly"
    *                   date: "2023-06-23"
    *                   cleared: false
@@ -492,6 +499,7 @@ module.exports = (router) => {
    *                   account: "729cb492-4eab-468b-9522-75d455cded22"
    *                   category: "9fa2550c-c3ff-498b-8df6-e0fbe2a62e0e"
    *                   amount: -7374
+   *                   amount_major: -73.74
    *                   date: "2023-06-23"
    *                   cleared: true
    *     responses:
@@ -562,11 +570,15 @@ module.exports = (router) => {
     if (isEmpty(transaction)) {
       throw new Error('transaction information is required');
     }
+    validateAmountFields(transaction, 'transaction');
   }
 
   function validateTransactionsArray(transactions) {
     if (transactions === undefined || !transactions.length) {
       throw new Error('List of transactions is required');
     }
+    transactions.forEach((transaction, index) => {
+      validateAmountFields(transaction, `transaction[${index}]`);
+    });
   }
 }
