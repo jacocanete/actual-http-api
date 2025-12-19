@@ -1,4 +1,4 @@
-const { isEmpty, paginate, validatePaginationParameters, addDisplayFields, validateAmountFields } = require('../../utils/utils');
+const { isEmpty, paginate, validatePaginationParameters, addDisplayFields, validateAmountFields, stripAmountMajor } = require('../../utils/utils');
 const { config } = require('../../config/config');
 
 /**
@@ -223,7 +223,8 @@ module.exports = (router) => {
     try {
       validateTransactionBody(req.body.transaction);
       await validateAccountExists(res, req.params.accountId);
-      res.json({'message': await res.locals.budget.addTransaction(req.params.accountId, req.body.transaction, {
+      const transaction = stripAmountMajor(req.body.transaction);
+      res.json({'message': await res.locals.budget.addTransaction(req.params.accountId, transaction, {
           learnCategories: req.body.learnCategories || false,
           runTransfers: req.body.runTransfers || false,
       })}).status(201);
@@ -295,7 +296,8 @@ module.exports = (router) => {
     try {
       validateTransactionsArray(req.body.transactions);
       await validateAccountExists(res, req.params.accountId);
-      res.json({'message': await res.locals.budget.addTransactions(req.params.accountId, req.body.transactions, {
+      const transactions = req.body.transactions.map(stripAmountMajor);
+      res.json({'message': await res.locals.budget.addTransactions(req.params.accountId, transactions, {
           learnCategories: req.body.learnCategories || false,
           runTransfers: req.body.runTransfers || false,
         })}).status(201);
@@ -387,7 +389,8 @@ module.exports = (router) => {
     try {
       validateTransactionsArray(req.body.transactions);
       await validateAccountExists(res, req.params.accountId);
-      res.json({'data': await res.locals.budget.importTransactions(req.params.accountId, req.body.transactions)}).status(201);
+      const transactions = req.body.transactions.map(stripAmountMajor);
+      res.json({'data': await res.locals.budget.importTransactions(req.params.accountId, transactions)}).status(201);
     } catch(err) {
       next(err);
     }
@@ -543,7 +546,8 @@ module.exports = (router) => {
   router.patch('/budgets/:budgetSyncId/transactions/:transactionId', async (req, res, next) => {
     try {
       validateTransactionBody(req.body.transaction);
-      await res.locals.budget.updateTransaction(req.params.transactionId, req.body.transaction);
+      const transaction = stripAmountMajor(req.body.transaction);
+      await res.locals.budget.updateTransaction(req.params.transactionId, transaction);
       res.json({'message': 'Transaction updated'});
     } catch(err) {
       next(err);

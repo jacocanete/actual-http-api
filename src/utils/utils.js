@@ -211,3 +211,15 @@ exports.validateAmountFields = (data, fieldName = 'request') => {
     );
   }
 }
+
+/**
+ * Strip amount_major field from data before sending to Actual Budget API
+ * @param {object} data - Object that may contain amount_major field
+ * @returns {object} New object without amount_major field
+ */
+exports.stripAmountMajor = (data) => {
+  if (!data || typeof data !== 'object') return data;
+
+  const { amount_major, ...rest } = data;
+  return rest;
+}

@@ -247,7 +247,13 @@ describe('Transactions Routes', () => {
       await handler(mockReq, mockRes, mockNext);
 
       expect(mockBudget.getAccount).toHaveBeenCalledWith('acc1');
-      expect(mockBudget.addTransaction).toHaveBeenCalledWith('acc1', mockReq.body.transaction, {
+      // amount_major should be stripped before sending to API
+      expect(mockBudget.addTransaction).toHaveBeenCalledWith('acc1', {
+        date: '2023-08-01',
+        amount: -5000,
+        payee_name: 'Store',
+        account: 'acc1',
+      }, {
         learnCategories: false,
         runTransfers: false,
       });
@@ -274,7 +280,12 @@ describe('Transactions Routes', () => {
 
       await handler(mockReq, mockRes, mockNext);
 
-      expect(mockBudget.addTransaction).toHaveBeenCalledWith('acc1', mockReq.body.transaction, {
+      // amount_major should be stripped before sending to API
+      expect(mockBudget.addTransaction).toHaveBeenCalledWith('acc1', {
+        date: '2023-08-01',
+        amount: -5000,
+        account: 'acc1',
+      }, {
         learnCategories: false,
         runTransfers: false,
       });
@@ -368,7 +379,21 @@ describe('Transactions Routes', () => {
       await handler(mockReq, mockRes, mockNext);
 
       expect(mockBudget.getAccount).toHaveBeenCalledWith('acc1');
-      expect(mockBudget.addTransactions).toHaveBeenCalledWith('acc1', mockReq.body.transactions, expect.any(Object));
+      // amount_major should be stripped before sending to API
+      expect(mockBudget.addTransactions).toHaveBeenCalledWith('acc1', [
+        {
+          date: '2023-08-01',
+          amount: -5000,
+          payee_name: 'Store',
+          account: 'acc1',
+        },
+        {
+          date: '2023-08-02',
+          amount: -7500,
+          payee_name: 'Gas',
+          account: 'acc1',
+        },
+      ], expect.any(Object));
       expect(mockRes.json).toHaveBeenCalledWith({
         message: 'ok',
       });
@@ -435,7 +460,15 @@ describe('Transactions Routes', () => {
       await handler(mockReq, mockRes, mockNext);
 
       expect(mockBudget.getAccount).toHaveBeenCalledWith('acc1');
-      expect(mockBudget.importTransactions).toHaveBeenCalledWith('acc1', mockReq.body.transactions);
+      // amount_major should be stripped before sending to API
+      expect(mockBudget.importTransactions).toHaveBeenCalledWith('acc1', [
+        {
+          date: '2023-08-01',
+          amount: -5000,
+          imported_id: 'ext-1',
+          account: 'acc1',
+        },
+      ]);
       expect(mockRes.json).toHaveBeenCalled();
     });
 
@@ -482,7 +515,13 @@ describe('Transactions Routes', () => {
 
       await handler(mockReq, mockRes, mockNext);
 
-      expect(mockBudget.updateTransaction).toHaveBeenCalledWith('txn1', mockReq.body.transaction);
+      // amount_major should be stripped before sending to API
+      expect(mockBudget.updateTransaction).toHaveBeenCalledWith('txn1', {
+        account: 'acc1',
+        date: '2023-08-01',
+        amount: -10000,
+        notes: 'Updated note',
+      });
       expect(mockRes.json).toHaveBeenCalledWith({
         message: 'Transaction updated',
       });

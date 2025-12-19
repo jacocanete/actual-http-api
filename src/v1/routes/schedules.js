@@ -1,4 +1,4 @@
-const { validatePaginationParameters, paginate, addDisplayFields, validateAmountFields } = require('../../utils/utils');
+const { validatePaginationParameters, paginate, addDisplayFields, validateAmountFields, stripAmountMajor } = require('../../utils/utils');
 const { config } = require('../../config/config');
 
 /**
@@ -271,7 +271,8 @@ module.exports = (router) => {
   router.post('/budgets/:budgetSyncId/schedules', async (req, res, next) => {
     try {
       validateScheduleBody(req.body);
-      res.json({ 'data': await res.locals.budget.createSchedule(req.body.schedule) });
+      const schedule = stripAmountMajor(req.body.schedule);
+      res.json({ 'data': await res.locals.budget.createSchedule(schedule) });
     } catch (err) {
       next(err);
     }
@@ -400,7 +401,8 @@ module.exports = (router) => {
   router.patch('/budgets/:budgetSyncId/schedules/:scheduleId', async (req, res, next) => {
     try {
       validateScheduleBody(req.body);
-      const updatedSchedule = await res.locals.budget.updateSchedule(req.params.scheduleId, req.body.schedule);
+      const schedule = stripAmountMajor(req.body.schedule);
+      const updatedSchedule = await res.locals.budget.updateSchedule(req.params.scheduleId, schedule);
       res.json({ 'data': addDisplayFields(updatedSchedule, config.currencySymbol) });
     } catch (err) {
       next(err);
