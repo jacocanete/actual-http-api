@@ -76,6 +76,7 @@ const MONEY_FIELDS = [
   'balance',
   'spent',
   'budgeted',
+  'available',
   'totalBudgeted',
   'totalSpent',
   'totalBalance',
@@ -84,7 +85,20 @@ const MONEY_FIELDS = [
   'lastMonthOverspent',
   'forNextMonth',
   'toBudget',
-  'fromLastMonth'
+  'fromLastMonth',
+  // AI agent route fields
+  'total_budgeted',
+  'total_spent',
+  'total_available',
+  'upcoming_total',
+  'past_due_total',
+  'paid_total',
+  'paid_amount',
+  // Debt payoff fields
+  'payment_made',
+  'total_payment_made',
+  'remaining_debt',
+  'total_remaining_debt'
 ];
 
 /**

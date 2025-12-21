@@ -21,6 +21,7 @@ require('./categories')(router);
 require('./rules')(router);
 require('./payees')(router);
 require('./schedules')(router);
+require('./ai')(router);
 require('./settings')(router);
 
 router.use(errorHandler);

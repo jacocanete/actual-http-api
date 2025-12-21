@@ -26,6 +26,7 @@ const errorHandler = (err, req, res, next) => {
     || err.message.includes('does not exist on table')
     || err.message.includes('convert to integer')
     || err.message.includes('must be')
+    || err.message.includes('mismatch')
   ) {
     clientError(res, 400, err, err.message);
   } else {
