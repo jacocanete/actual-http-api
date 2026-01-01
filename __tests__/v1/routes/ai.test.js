@@ -878,4 +878,496 @@ describe('AI Agent Routes', () => {
       expect(mockNext).toHaveBeenCalledWith(error);
     });
   });
+
+  describe('GET /budgets/:budgetSyncId/ai/spending-summary', () => {
+    beforeEach(() => {
+      // Add getCategories mock
+      mockBudget.getCategories = jest.fn().mockResolvedValue([
+        { id: 'cat1', name: 'Food', group_id: 'grp1' },
+        { id: 'cat2', name: 'Transport', group_id: 'grp1' },
+        { id: 'cat3', name: 'Entertainment', group_id: 'grp2' },
+      ]);
+
+      // Mock transactions with expenses and income
+      mockBudget.getTransactions = jest.fn().mockResolvedValue([
+        {
+          id: 'tx1',
+          date: '2025-12-15',
+          amount: -15000,
+          payee: 'payee1',
+          category: 'cat1',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+        {
+          id: 'tx2',
+          date: '2025-12-16',
+          amount: -8000,
+          payee: 'payee2',
+          category: 'cat1',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+        {
+          id: 'tx3',
+          date: '2025-12-17',
+          amount: -25000,
+          payee: 'payee1',
+          category: 'cat2',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+        {
+          id: 'tx4',
+          date: '2025-12-18',
+          amount: 500000,
+          payee: 'payee3',
+          category: 'cat-income',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+        {
+          id: 'tx5',
+          date: '2025-12-19',
+          amount: -5000,
+          payee: 'payee4',
+          category: 'cat3',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+      ]);
+    });
+
+    it('should register the route', () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      expect(mockRouter.get).toHaveBeenCalledWith(
+        '/budgets/:budgetSyncId/ai/spending-summary',
+        expect.any(Function)
+      );
+    });
+
+    it('should return spending summary with totals', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      expect(mockRes.json).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          month: '2025-12',
+          period: expect.objectContaining({
+            start_date: '2025-12-01',
+            days_elapsed: expect.any(Number),
+            days_remaining: expect.any(Number),
+          }),
+          totals: expect.objectContaining({
+            total_spent: 53000, // 15000 + 8000 + 25000 + 5000
+            total_income: 500000,
+            net_flow: 447000, // 500000 - 53000
+            transaction_count: 4, // Only expenses
+          }),
+        }),
+      });
+    });
+
+    it('should include display fields for totals', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      expect(response.data.totals).toHaveProperty('total_spent_display');
+      expect(response.data.totals).toHaveProperty('total_income_display');
+      expect(response.data.totals).toHaveProperty('net_flow_display');
+      expect(response.data.totals).toHaveProperty('daily_average_spent_display');
+    });
+
+    it('should return top categories sorted by spending', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+      const categories = response.data.top_categories;
+
+      expect(categories.length).toBeGreaterThan(0);
+      expect(categories[0].name).toBe('Transport'); // 25000
+      expect(categories[1].name).toBe('Food'); // 23000
+      expect(categories[2].name).toBe('Entertainment'); // 5000
+
+      // Verify sorting (descending by spent)
+      for (let i = 1; i < categories.length; i++) {
+        expect(categories[i].spent).toBeLessThanOrEqual(categories[i - 1].spent);
+      }
+    });
+
+    it('should include percent_of_total for categories', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+      const category = response.data.top_categories[0];
+
+      expect(category).toHaveProperty('percent_of_total');
+      expect(category).toHaveProperty('transaction_count');
+      expect(category).toHaveProperty('spent_display');
+    });
+
+    it('should return top payees sorted by spending', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+      const payees = response.data.top_payees;
+
+      expect(payees.length).toBeGreaterThan(0);
+      expect(payees[0].name).toBe('Landlord'); // 15000 + 25000 = 40000
+
+      // Verify sorting (descending by spent)
+      for (let i = 1; i < payees.length; i++) {
+        expect(payees[i].spent).toBeLessThanOrEqual(payees[i - 1].spent);
+      }
+    });
+
+    it('should return largest transactions sorted by amount', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+      const transactions = response.data.largest_transactions;
+
+      expect(transactions.length).toBeGreaterThan(0);
+      expect(transactions[0].amount).toBe(-25000); // Most negative first
+
+      // Verify sorting (most negative first)
+      for (let i = 1; i < transactions.length; i++) {
+        expect(transactions[i].amount).toBeGreaterThanOrEqual(transactions[i - 1].amount);
+      }
+    });
+
+    it('should include transaction details in largest_transactions', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+      const transaction = response.data.largest_transactions[0];
+
+      expect(transaction).toHaveProperty('id');
+      expect(transaction).toHaveProperty('date');
+      expect(transaction).toHaveProperty('amount');
+      expect(transaction).toHaveProperty('amount_display');
+      expect(transaction).toHaveProperty('payee_name');
+      expect(transaction).toHaveProperty('category_name');
+      expect(transaction).toHaveProperty('account_name');
+    });
+
+    it('should accept month parameter', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      mockReq.query.month = '2025-11';
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      expect(response.data.month).toBe('2025-11');
+      expect(response.data.period.start_date).toBe('2025-11-01');
+    });
+
+    it('should exclude transfers from spending calculations', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      // Add a transfer transaction
+      mockBudget.getTransactions.mockResolvedValueOnce([
+        {
+          id: 'tx1',
+          date: '2025-12-15',
+          amount: -15000,
+          payee: 'payee1',
+          category: 'cat1',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+        {
+          id: 'tx-transfer',
+          date: '2025-12-16',
+          amount: -50000,
+          payee: 'payee2',
+          category: null,
+          tombstone: false,
+          is_child: false,
+          transfer_id: 'acc2', // This is a transfer
+        },
+      ]);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      // Transfer should not be counted in spending
+      expect(response.data.totals.total_spent).toBe(15000);
+      expect(response.data.totals.transaction_count).toBe(1);
+    });
+
+    it('should exclude tombstoned transactions', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      mockBudget.getTransactions.mockResolvedValueOnce([
+        {
+          id: 'tx1',
+          date: '2025-12-15',
+          amount: -15000,
+          payee: 'payee1',
+          category: 'cat1',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+        {
+          id: 'tx-deleted',
+          date: '2025-12-16',
+          amount: -50000,
+          payee: 'payee2',
+          category: 'cat1',
+          tombstone: true, // Deleted
+          is_child: false,
+          transfer_id: null,
+        },
+      ]);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      expect(response.data.totals.total_spent).toBe(15000);
+    });
+
+    it('should exclude child transactions', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      mockBudget.getTransactions.mockResolvedValueOnce([
+        {
+          id: 'tx1',
+          date: '2025-12-15',
+          amount: -15000,
+          payee: 'payee1',
+          category: 'cat1',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+        {
+          id: 'tx-child',
+          date: '2025-12-16',
+          amount: -5000,
+          payee: 'payee2',
+          category: 'cat1',
+          tombstone: false,
+          is_child: true, // Child of split
+          transfer_id: null,
+        },
+      ]);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      expect(response.data.totals.total_spent).toBe(15000);
+    });
+
+    it('should calculate daily average correctly', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      // With 21 days elapsed and 53000 spent
+      const expectedAverage = Math.round(53000 / 21);
+      expect(response.data.totals.daily_average_spent).toBe(expectedAverage);
+    });
+
+    it('should handle Uncategorized transactions', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      mockBudget.getTransactions.mockResolvedValueOnce([
+        {
+          id: 'tx1',
+          date: '2025-12-15',
+          amount: -15000,
+          payee: 'payee1',
+          category: null, // No category
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+      ]);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+      const uncategorized = response.data.top_categories.find((c) => c.name === 'Uncategorized');
+
+      expect(uncategorized).toBeDefined();
+      expect(uncategorized.spent).toBe(15000);
+    });
+
+    it('should handle Unknown payees', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      mockBudget.getTransactions.mockResolvedValueOnce([
+        {
+          id: 'tx1',
+          date: '2025-12-15',
+          amount: -15000,
+          payee: null, // No payee
+          category: 'cat1',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        },
+      ]);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+      const unknown = response.data.top_payees.find((p) => p.name === 'Unknown');
+
+      expect(unknown).toBeDefined();
+      expect(unknown.spent).toBe(15000);
+    });
+
+    it('should limit top categories to 10', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      // Create 15 categories worth of transactions
+      const manyCategories = [];
+      for (let i = 1; i <= 15; i++) {
+        manyCategories.push({ id: `cat${i}`, name: `Category ${i}`, group_id: 'grp1' });
+      }
+      mockBudget.getCategories.mockResolvedValueOnce(manyCategories);
+
+      const manyTransactions = [];
+      for (let i = 1; i <= 15; i++) {
+        manyTransactions.push({
+          id: `tx${i}`,
+          date: '2025-12-15',
+          amount: -1000 * i,
+          payee: 'payee1',
+          category: `cat${i}`,
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        });
+      }
+      mockBudget.getTransactions.mockResolvedValueOnce(manyTransactions);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      expect(response.data.top_categories.length).toBe(10);
+    });
+
+    it('should limit largest transactions to 10', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const manyTransactions = [];
+      for (let i = 1; i <= 15; i++) {
+        manyTransactions.push({
+          id: `tx${i}`,
+          date: '2025-12-15',
+          amount: -1000 * i,
+          payee: 'payee1',
+          category: 'cat1',
+          tombstone: false,
+          is_child: false,
+          transfer_id: null,
+        });
+      }
+      mockBudget.getTransactions.mockResolvedValueOnce(manyTransactions);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      expect(response.data.largest_transactions.length).toBe(10);
+    });
+
+    it('should handle errors from getTransactions', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      const error = new Error('Failed to fetch transactions');
+      mockBudget.getTransactions.mockRejectedValueOnce(error);
+
+      await handler(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(error);
+    });
+
+    it('should handle empty transactions', async () => {
+      const aiModule = require('../../../src/v1/routes/ai');
+      aiModule(mockRouter);
+
+      mockBudget.getTransactions.mockResolvedValueOnce([]);
+
+      const handler = handlers['GET /budgets/:budgetSyncId/ai/spending-summary'];
+      await handler(mockReq, mockRes, mockNext);
+
+      const response = mockRes.json.mock.calls[0][0];
+
+      expect(response.data.totals.total_spent).toBe(0);
+      expect(response.data.totals.total_income).toBe(0);
+      expect(response.data.totals.net_flow).toBe(0);
+      expect(response.data.totals.transaction_count).toBe(0);
+      expect(response.data.top_categories).toEqual([]);
+      expect(response.data.top_payees).toEqual([]);
+      expect(response.data.largest_transactions).toEqual([]);
+    });
+  });
 });
