@@ -248,48 +248,56 @@ const { config } = require('../../config/config');
  *     AITransaction:
  *       type: object
  *       properties:
- *         id:
- *           type: string
  *         date:
  *           type: string
  *           example: "2025-12-21"
- *         amount:
- *           type: integer
- *           description: Amount in cents (negative for expenses)
  *         amount_display:
  *           type: string
- *           example: "-P150.00"
- *         payee_name:
+ *           example: "-₱150.00"
+ *         payee:
  *           type: string
- *         category_name:
+ *         category:
  *           type: string
- *         account_name:
- *           type: string
- *         notes:
- *           type: string
- *         cleared:
- *           type: boolean
- *         is_transfer:
- *           type: boolean
- *         is_split:
- *           type: boolean
- *         schedule_name:
- *           type: string
- *           description: Name of linked recurring bill/schedule, if any
- *         split_items:
+ *     AITransactionsResponse:
+ *       type: object
+ *       properties:
+ *         summary:
+ *           type: object
+ *           properties:
+ *             month:
+ *               type: string
+ *               example: "2025-12"
+ *             total_spent_display:
+ *               type: string
+ *               example: "-₱15,000.00"
+ *             transaction_count:
+ *               type: integer
+ *             top_categories:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                   spent_display:
+ *                     type: string
+ *                   count:
+ *                     type: integer
+ *             top_payees:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                   spent_display:
+ *                     type: string
+ *                   count:
+ *                     type: integer
+ *         transactions:
  *           type: array
- *           description: Present only if is_split is true
  *           items:
- *             type: object
- *             properties:
- *               amount:
- *                 type: integer
- *               amount_display:
- *                 type: string
- *               category_name:
- *                 type: string
- *               notes:
- *                 type: string
+ *             $ref: '#/components/schemas/AITransaction'
  *     AITransactionCreate:
  *       type: object
  *       required:
@@ -657,49 +665,21 @@ module.exports = (router) => {
    *     parameters:
    *       - $ref: '#/components/parameters/budgetSyncId'
    *       - $ref: '#/components/parameters/budgetEncryptionPassword'
-   *       - name: account
+   *       - name: month
    *         in: query
    *         schema:
    *           type: string
-   *         description: Filter by account name (case-insensitive partial match)
-   *       - name: category
-   *         in: query
-   *         schema:
-   *           type: string
-   *         description: Filter by category name (case-insensitive partial match)
-   *       - name: payee
-   *         in: query
-   *         schema:
-   *           type: string
-   *         description: Filter by payee name (case-insensitive partial match)
-   *       - name: since_date
-   *         in: query
-   *         schema:
-   *           type: string
-   *         required: true
-   *         description: Start date (YYYY-MM-DD). Required.
-   *       - name: until_date
-   *         in: query
-   *         schema:
-   *           type: string
-   *         description: End date (YYYY-MM-DD). Defaults to today.
-   *       - name: limit
-   *         in: query
-   *         schema:
-   *           type: integer
-   *         description: Maximum number of transactions to return. Defaults to 100.
+   *         description: Month in YYYY-MM format. Defaults to current month. Example "2025-12"
    *     responses:
    *       '200':
-   *         description: List of transactions
+   *         description: Transaction summary with list of transactions
    *         content:
    *           application/json:
    *             schema:
    *               type: object
    *               properties:
    *                 data:
-   *                   type: array
-   *                   items:
-   *                     $ref: '#/components/schemas/AITransaction'
+   *                   $ref: '#/components/schemas/AITransactionsResponse'
    *       '400':
    *         $ref: '#/components/responses/400'
    *       '500':
@@ -740,103 +720,105 @@ module.exports = (router) => {
    */
   router.get('/budgets/:budgetSyncId/ai/transactions', async (req, res, next) => {
     try {
-      const { account, category, payee, since_date, until_date, limit } = req.query;
+      const { month } = req.query;
+      const targetMonth = month || getCurrentMonth();
 
-      if (!since_date) {
-        throw new Error('since_date query parameter is required (YYYY-MM-DD)');
-      }
+      // Calculate date range from month
+      const [year, monthNum] = targetMonth.split('-').map(Number);
+      const startDate = `${targetMonth}-01`;
+      const lastDay = new Date(year, monthNum, 0).getDate();
+      const endDate = `${targetMonth}-${String(lastDay).padStart(2, '0')}`;
 
       const accounts = await res.locals.budget.getAccounts();
       const categories = await res.locals.budget.getCategories();
       const payees = await res.locals.budget.getPayees();
-      const schedules = await res.locals.budget.getSchedules();
 
       // Create lookup maps
-      const accountMap = Object.fromEntries(accounts.map(a => [a.id, a.name]));
       const categoryMap = Object.fromEntries(categories.map(c => [c.id, c.name]));
       const payeeMap = Object.fromEntries(payees.map(p => [p.id, p.name]));
-      const scheduleMap = Object.fromEntries(schedules.map(s => [s.id, s.name || payeeMap[s.payee] || 'Unnamed']));
 
-      // Filter accounts if specified
-      let targetAccounts = accounts.filter(a => !a.closed);
-      if (account) {
-        const accountLower = account.toLowerCase();
-        targetAccounts = targetAccounts.filter(a =>
-          a.name.toLowerCase().includes(accountLower)
-        );
-        if (targetAccounts.length === 0) {
-          throw new Error(`No account found matching "${account}"`);
-        }
-      }
-
-      // Fetch transactions from all target accounts
+      // Fetch transactions from all active accounts
       let allTransactions = [];
-      const endDate = until_date || formatDate(new Date());
+      const activeAccounts = accounts.filter(a => !a.closed);
 
-      for (const acc of targetAccounts) {
-        const transactions = await res.locals.budget.getTransactions(acc.id, since_date, endDate);
+      for (const acc of activeAccounts) {
+        const transactions = await res.locals.budget.getTransactions(acc.id, startDate, endDate);
         allTransactions = allTransactions.concat(
           transactions.map(tx => ({ ...tx, _accountId: acc.id }))
         );
       }
 
-      // Transform transactions to AI-friendly format
-      let result = allTransactions
-        .filter(tx => !tx.tombstone && !tx.is_child) // Skip deleted and child transactions
-        .map(tx => {
-          const transformed = {
-            id: tx.id,
-            date: tx.date,
-            amount: tx.amount,
-            amount_display: formatTransactionAmount(tx.amount, config.currencySymbol),
-            payee_name: payeeMap[tx.payee] || tx.imported_payee || null,
-            category_name: categoryMap[tx.category] || null,
-            account_name: accountMap[tx._accountId] || accountMap[tx.account] || null,
-            notes: tx.notes || null,
-            cleared: tx.cleared || false,
-            is_transfer: !!tx.transfer_id,
-            schedule_name: tx.schedule ? scheduleMap[tx.schedule] : null,
-          };
+      // Filter valid transactions (exclude deleted, child, and transfers)
+      const validTransactions = allTransactions
+        .filter(tx => !tx.tombstone && !tx.is_child && !tx.transfer_id);
 
-          // Add split items if this is a parent transaction
-          if (tx.is_parent && tx.subtransactions && tx.subtransactions.length > 0) {
-            transformed.is_split = true;
-            transformed.split_items = tx.subtransactions.map(sub => ({
-              amount: sub.amount,
-              amount_display: formatTransactionAmount(sub.amount, config.currencySymbol),
-              category_name: categoryMap[sub.category] || null,
-              notes: sub.notes || null,
-            }));
-          } else {
-            transformed.is_split = false;
-          }
+      // Separate expenses for analysis
+      const expenses = validTransactions.filter(tx => tx.amount < 0);
+      const totalSpent = expenses.reduce((sum, tx) => sum + tx.amount, 0);
 
-          return transformed;
-        });
-
-      // Apply filters
-      if (category) {
-        const categoryLower = category.toLowerCase();
-        result = result.filter(tx =>
-          tx.category_name && tx.category_name.toLowerCase().includes(categoryLower)
-        );
+      // Aggregate by category
+      const categoryTotals = {};
+      for (const tx of expenses) {
+        const catName = categoryMap[tx.category] || 'Uncategorized';
+        if (!categoryTotals[catName]) {
+          categoryTotals[catName] = { spent: 0, count: 0 };
+        }
+        categoryTotals[catName].spent += Math.abs(tx.amount);
+        categoryTotals[catName].count++;
       }
 
-      if (payee) {
-        const payeeLower = payee.toLowerCase();
-        result = result.filter(tx =>
-          tx.payee_name && tx.payee_name.toLowerCase().includes(payeeLower)
-        );
+      const topCategories = Object.entries(categoryTotals)
+        .map(([name, data]) => ({
+          name,
+          spent_display: formatTransactionAmount(-data.spent, config.currencySymbol),
+          count: data.count,
+        }))
+        .sort((a, b) => b.count - a.count || b.spent_display.localeCompare(a.spent_display))
+        .slice(0, 5);
+
+      // Aggregate by payee
+      const payeeTotals = {};
+      for (const tx of expenses) {
+        const payeeName = payeeMap[tx.payee] || tx.imported_payee || 'Unknown';
+        if (!payeeTotals[payeeName]) {
+          payeeTotals[payeeName] = { spent: 0, count: 0 };
+        }
+        payeeTotals[payeeName].spent += Math.abs(tx.amount);
+        payeeTotals[payeeName].count++;
       }
+
+      const topPayees = Object.entries(payeeTotals)
+        .map(([name, data]) => ({
+          name,
+          spent_display: formatTransactionAmount(-data.spent, config.currencySymbol),
+          count: data.count,
+        }))
+        .sort((a, b) => b.count - a.count || b.spent_display.localeCompare(a.spent_display))
+        .slice(0, 5);
 
       // Sort by date descending (newest first)
-      result.sort((a, b) => new Date(b.date) - new Date(a.date));
+      const sortedTransactions = [...validTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-      // Apply limit
-      const maxResults = parseInt(limit) || 100;
-      result = result.slice(0, maxResults);
+      // Transform to simplified format
+      const transactions = sortedTransactions.map(tx => ({
+        date: tx.date,
+        amount_display: formatTransactionAmount(tx.amount, config.currencySymbol),
+        payee: payeeMap[tx.payee] || tx.imported_payee || null,
+        category: categoryMap[tx.category] || null,
+      }));
 
-      res.json({ data: result });
+      const response = {
+        summary: {
+          month: targetMonth,
+          total_spent_display: formatTransactionAmount(totalSpent, config.currencySymbol),
+          transaction_count: expenses.length,
+          top_categories: topCategories,
+          top_payees: topPayees,
+        },
+        transactions: transactions,
+      };
+
+      res.json({ data: response });
     } catch (err) {
       next(err);
     }
@@ -1120,6 +1102,267 @@ module.exports = (router) => {
         });
 
       res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * @swagger
+   * /budgets/{budgetSyncId}/ai/spending-summary:
+   *   get:
+   *     summary: Get spending analysis for the current month ("Why am I broke?")
+   *     description: >-
+   *       Returns a comprehensive spending analysis including top categories,
+   *       top payees, largest transactions, and daily averages. Designed to
+   *       answer "Where did my money go this month?"
+   *     tags: [AI Agent]
+   *     security:
+   *       - apiKey: []
+   *     parameters:
+   *       - $ref: '#/components/parameters/budgetSyncId'
+   *       - $ref: '#/components/parameters/budgetEncryptionPassword'
+   *       - name: month
+   *         in: query
+   *         schema:
+   *           type: string
+   *         required: false
+   *         description: Month in YYYY-MM format. Defaults to current month.
+   *     responses:
+   *       '200':
+   *         description: Spending summary data
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     month:
+   *                       type: string
+   *                     period:
+   *                       type: object
+   *                       properties:
+   *                         start_date:
+   *                           type: string
+   *                         end_date:
+   *                           type: string
+   *                         days_elapsed:
+   *                           type: integer
+   *                         days_remaining:
+   *                           type: integer
+   *                     totals:
+   *                       type: object
+   *                       properties:
+   *                         total_spent:
+   *                           type: integer
+   *                         total_spent_display:
+   *                           type: string
+   *                         total_income:
+   *                           type: integer
+   *                         total_income_display:
+   *                           type: string
+   *                         net_flow:
+   *                           type: integer
+   *                         net_flow_display:
+   *                           type: string
+   *                         transaction_count:
+   *                           type: integer
+   *                         daily_average_spent:
+   *                           type: integer
+   *                         daily_average_spent_display:
+   *                           type: string
+   *                     top_categories:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           name:
+   *                             type: string
+   *                           spent:
+   *                             type: integer
+   *                           spent_display:
+   *                             type: string
+   *                           percent_of_total:
+   *                             type: number
+   *                           transaction_count:
+   *                             type: integer
+   *                     top_payees:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           name:
+   *                             type: string
+   *                           spent:
+   *                             type: integer
+   *                           spent_display:
+   *                             type: string
+   *                           percent_of_total:
+   *                             type: number
+   *                           transaction_count:
+   *                             type: integer
+   *                     largest_transactions:
+   *                       type: array
+   *                       items:
+   *                         $ref: '#/components/schemas/AITransaction'
+   *       '404':
+   *         $ref: '#/components/responses/404'
+   *       '500':
+   *         $ref: '#/components/responses/500'
+   */
+  router.get('/budgets/:budgetSyncId/ai/spending-summary', async (req, res, next) => {
+    try {
+      const { month } = req.query;
+      const targetMonth = month || getCurrentMonth();
+
+      // Calculate date range
+      const [year, monthNum] = targetMonth.split('-').map(Number);
+      const startDate = `${targetMonth}-01`;
+      const lastDay = new Date(year, monthNum, 0).getDate();
+      const endDate = `${targetMonth}-${String(lastDay).padStart(2, '0')}`;
+
+      // Calculate days elapsed and remaining
+      const today = new Date();
+      const monthEnd = new Date(year, monthNum, 0);
+      const isCurrentMonth = today.getFullYear() === year && today.getMonth() === monthNum - 1;
+
+      let daysElapsed, daysRemaining;
+      if (isCurrentMonth) {
+        daysElapsed = today.getDate();
+        daysRemaining = lastDay - today.getDate();
+      } else if (today > monthEnd) {
+        daysElapsed = lastDay;
+        daysRemaining = 0;
+      } else {
+        daysElapsed = 0;
+        daysRemaining = lastDay;
+      }
+
+      // Fetch all required data
+      const accounts = await res.locals.budget.getAccounts();
+      const categories = await res.locals.budget.getCategories();
+      const payees = await res.locals.budget.getPayees();
+
+      // Create lookup maps
+      const categoryMap = Object.fromEntries(categories.map(c => [c.id, c.name]));
+      const payeeMap = Object.fromEntries(payees.map(p => [p.id, p.name]));
+      const accountMap = Object.fromEntries(accounts.map(a => [a.id, a.name]));
+
+      // Fetch transactions for the month
+      let allTransactions = [];
+      const activeAccounts = accounts.filter(a => !a.closed);
+      const fetchEndDate = isCurrentMonth ? formatDate(today) : endDate;
+
+      for (const acc of activeAccounts) {
+        const transactions = await res.locals.budget.getTransactions(acc.id, startDate, fetchEndDate);
+        allTransactions = allTransactions.concat(
+          transactions.map(tx => ({ ...tx, _accountId: acc.id }))
+        );
+      }
+
+      // Filter out deleted, child transactions, and transfers
+      const validTransactions = allTransactions.filter(
+        tx => !tx.tombstone && !tx.is_child && !tx.transfer_id
+      );
+
+      // Separate expenses and income
+      const expenses = validTransactions.filter(tx => tx.amount < 0);
+      const income = validTransactions.filter(tx => tx.amount > 0);
+
+      // Calculate totals
+      const totalSpent = Math.abs(expenses.reduce((sum, tx) => sum + tx.amount, 0));
+      const totalIncome = income.reduce((sum, tx) => sum + tx.amount, 0);
+      const netFlow = totalIncome - totalSpent;
+      const dailyAverageSpent = daysElapsed > 0 ? Math.round(totalSpent / daysElapsed) : 0;
+
+      // Aggregate by category
+      const categoryTotals = {};
+      for (const tx of expenses) {
+        const catName = categoryMap[tx.category] || 'Uncategorized';
+        if (!categoryTotals[catName]) {
+          categoryTotals[catName] = { spent: 0, count: 0 };
+        }
+        categoryTotals[catName].spent += Math.abs(tx.amount);
+        categoryTotals[catName].count++;
+      }
+
+      // Sort categories by spent amount
+      const topCategories = Object.entries(categoryTotals)
+        .map(([name, data]) => ({
+          name,
+          spent: data.spent,
+          spent_display: formatTransactionAmount(-data.spent, config.currencySymbol),
+          percent_of_total: totalSpent > 0 ? Math.round((data.spent / totalSpent) * 100) : 0,
+          transaction_count: data.count,
+        }))
+        .sort((a, b) => b.spent - a.spent)
+        .slice(0, 10);
+
+      // Aggregate by payee
+      const payeeTotals = {};
+      for (const tx of expenses) {
+        const payeeName = payeeMap[tx.payee] || tx.imported_payee || 'Unknown';
+        if (!payeeTotals[payeeName]) {
+          payeeTotals[payeeName] = { spent: 0, count: 0 };
+        }
+        payeeTotals[payeeName].spent += Math.abs(tx.amount);
+        payeeTotals[payeeName].count++;
+      }
+
+      // Sort payees by spent amount
+      const topPayees = Object.entries(payeeTotals)
+        .map(([name, data]) => ({
+          name,
+          spent: data.spent,
+          spent_display: formatTransactionAmount(-data.spent, config.currencySymbol),
+          percent_of_total: totalSpent > 0 ? Math.round((data.spent / totalSpent) * 100) : 0,
+          transaction_count: data.count,
+        }))
+        .sort((a, b) => b.spent - a.spent)
+        .slice(0, 10);
+
+      // Get largest transactions
+      const largestTransactions = expenses
+        .sort((a, b) => a.amount - b.amount) // Most negative first
+        .slice(0, 10)
+        .map(tx => ({
+          id: tx.id,
+          date: tx.date,
+          amount: tx.amount,
+          amount_display: formatTransactionAmount(tx.amount, config.currencySymbol),
+          payee_name: payeeMap[tx.payee] || tx.imported_payee || null,
+          category_name: categoryMap[tx.category] || null,
+          account_name: accountMap[tx._accountId] || null,
+          notes: tx.notes || null,
+        }));
+
+      const response = {
+        month: targetMonth,
+        period: {
+          start_date: startDate,
+          end_date: isCurrentMonth ? formatDate(today) : endDate,
+          days_elapsed: daysElapsed,
+          days_remaining: daysRemaining,
+        },
+        totals: {
+          total_spent: totalSpent,
+          total_spent_display: formatTransactionAmount(-totalSpent, config.currencySymbol),
+          total_income: totalIncome,
+          total_income_display: formatTransactionAmount(totalIncome, config.currencySymbol),
+          net_flow: netFlow,
+          net_flow_display: formatTransactionAmount(netFlow, config.currencySymbol),
+          transaction_count: expenses.length,
+          daily_average_spent: dailyAverageSpent,
+          daily_average_spent_display: formatTransactionAmount(-dailyAverageSpent, config.currencySymbol),
+        },
+        top_categories: topCategories,
+        top_payees: topPayees,
+        largest_transactions: largestTransactions,
+      };
+
+      res.json({ data: response });
     } catch (err) {
       next(err);
     }
