@@ -298,6 +298,50 @@ const { config } = require('../../config/config');
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/AITransaction'
+ *     AITransferCreate:
+ *       type: object
+ *       required:
+ *         - from_account
+ *         - to_account
+ *         - amount
+ *         - amount_major
+ *       properties:
+ *         from_account:
+ *           type: string
+ *           description: Source account name (case-insensitive match)
+ *           example: "GoTyme Bank"
+ *         to_account:
+ *           type: string
+ *           description: Destination account name (case-insensitive match)
+ *           example: "Maya"
+ *         amount:
+ *           type: integer
+ *           description: Transfer amount in cents (positive value)
+ *           example: 500000
+ *         amount_major:
+ *           type: number
+ *           description: Transfer amount in major currency units. Must equal amount/100.
+ *           example: 5000.00
+ *         fee:
+ *           type: integer
+ *           description: Transfer fee in cents (positive value). Optional.
+ *           example: 2500
+ *         fee_major:
+ *           type: number
+ *           description: Fee in major currency units. Must equal fee/100.
+ *           example: 25.00
+ *         fee_category:
+ *           type: string
+ *           description: Category for the fee. Defaults to "Bank Fees" if fee is provided.
+ *           example: "Bank Fees"
+ *         date:
+ *           type: string
+ *           description: Transaction date (YYYY-MM-DD). Defaults to today.
+ *           example: "2025-01-02"
+ *         notes:
+ *           type: string
+ *           description: Optional notes/memo
+ *           example: "Transfer to Maya for bills"
  *     AITransactionCreate:
  *       type: object
  *       required:
@@ -999,6 +1043,210 @@ module.exports = (router) => {
         data: response,
         budget_alert: budgetAlert,
         message: 'Transaction created successfully'
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * @swagger
+   * /budgets/{budgetSyncId}/ai/transfer:
+   *   post:
+   *     summary: Create a bank transfer with optional fee
+   *     description: >-
+   *       Creates a transfer between two accounts. If a fee is specified,
+   *       creates a split transaction with the transfer and fee as separate items.
+   *     tags: [AI Agent]
+   *     security:
+   *       - apiKey: []
+   *     parameters:
+   *       - $ref: '#/components/parameters/budgetSyncId'
+   *       - $ref: '#/components/parameters/budgetEncryptionPassword'
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/AITransferCreate'
+   *     responses:
+   *       '201':
+   *         description: Transfer created successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     date:
+   *                       type: string
+   *                     from_account:
+   *                       type: string
+   *                     to_account:
+   *                       type: string
+   *                     amount_display:
+   *                       type: string
+   *                     fee_display:
+   *                       type: string
+   *                     total_display:
+   *                       type: string
+   *                 message:
+   *                   type: string
+   *       '400':
+   *         $ref: '#/components/responses/400'
+   *       '500':
+   *         $ref: '#/components/responses/500'
+   */
+  router.post('/budgets/:budgetSyncId/ai/transfer', async (req, res, next) => {
+    try {
+      const {
+        from_account,
+        to_account,
+        amount,
+        amount_major,
+        fee,
+        fee_major,
+        fee_category,
+        date,
+        notes
+      } = req.body;
+
+      // Validate required fields
+      if (!from_account || !to_account) {
+        throw new Error('from_account and to_account are required');
+      }
+      if (amount === undefined || amount_major === undefined) {
+        throw new Error('Both amount (cents) and amount_major are required');
+      }
+      if (amount <= 0) {
+        throw new Error('amount must be positive');
+      }
+
+      // Validate amount match
+      const expectedCents = Math.round(amount_major * 100);
+      if (amount !== expectedCents) {
+        throw new Error(
+          `amount mismatch: amount (${amount} cents) does not match amount_major * 100 (${amount_major} × 100 = ${expectedCents} cents)`
+        );
+      }
+
+      // Validate fee if provided
+      if (fee !== undefined) {
+        if (fee_major === undefined) {
+          throw new Error('fee_major is required when fee is provided');
+        }
+        const expectedFeeCents = Math.round(fee_major * 100);
+        if (fee !== expectedFeeCents) {
+          throw new Error(
+            `fee mismatch: fee (${fee} cents) does not match fee_major * 100 (${fee_major} × 100 = ${expectedFeeCents} cents)`
+          );
+        }
+      }
+
+      // Resolve accounts
+      const accounts = await res.locals.budget.getAccounts();
+
+      const fromLower = from_account.toLowerCase();
+      const fromAccount = accounts.find(a =>
+        a.name.toLowerCase() === fromLower ||
+        a.name.toLowerCase().includes(fromLower)
+      );
+      if (!fromAccount) {
+        throw new Error(`Source account "${from_account}" not found`);
+      }
+
+      const toLower = to_account.toLowerCase();
+      const toAccount = accounts.find(a =>
+        a.name.toLowerCase() === toLower ||
+        a.name.toLowerCase().includes(toLower)
+      );
+      if (!toAccount) {
+        throw new Error(`Destination account "${to_account}" not found`);
+      }
+
+      if (fromAccount.id === toAccount.id) {
+        throw new Error('Source and destination accounts must be different');
+      }
+
+      // Find the transfer payee for the destination account
+      const payees = await res.locals.budget.getPayees();
+      const transferPayee = payees.find(p => p.transfer_acct === toAccount.id);
+      if (!transferPayee) {
+        throw new Error(`Transfer payee for account "${toAccount.name}" not found`);
+      }
+
+      // Resolve fee category if fee is provided
+      let feeCategoryId = null;
+      if (fee && fee > 0) {
+        const categories = await res.locals.budget.getCategories();
+        const feeCatName = fee_category || 'Bank Fees';
+        const feeCatLower = feeCatName.toLowerCase();
+        const matchedCategory = categories.find(c =>
+          c.name.toLowerCase() === feeCatLower ||
+          c.name.toLowerCase().includes(feeCatLower)
+        );
+        if (!matchedCategory) {
+          throw new Error(`Fee category "${feeCatName}" not found`);
+        }
+        feeCategoryId = matchedCategory.id;
+      }
+
+      const txDate = date || formatDate(new Date());
+      const totalAmount = amount + (fee || 0);
+
+      // Build transaction
+      let transaction;
+      if (fee && fee > 0) {
+        // Split transaction: transfer + fee
+        transaction = {
+          date: txDate,
+          amount: -totalAmount,
+          payee: transferPayee.id,
+          notes: notes || null,
+          cleared: false,
+          subtransactions: [
+            {
+              amount: -amount,
+              payee: transferPayee.id,
+              category: null, // Transfers don't need category
+            },
+            {
+              amount: -fee,
+              category: feeCategoryId,
+            }
+          ]
+        };
+      } else {
+        // Simple transfer without fee
+        transaction = {
+          date: txDate,
+          amount: -amount,
+          payee: transferPayee.id,
+          notes: notes || null,
+          cleared: false,
+        };
+      }
+
+      // Create transaction with runTransfers to create the matching transaction
+      await res.locals.budget.addTransaction(fromAccount.id, transaction, { runTransfers: true });
+
+      // Build response
+      const response = {
+        date: txDate,
+        from_account: fromAccount.name,
+        to_account: toAccount.name,
+        amount_display: formatTransactionAmount(amount, config.currencySymbol),
+        fee_display: fee ? formatTransactionAmount(fee, config.currencySymbol) : null,
+        total_display: formatTransactionAmount(totalAmount, config.currencySymbol),
+      };
+
+      res.status(201).json({
+        data: response,
+        message: fee
+          ? `Transferred ${response.amount_display} from ${fromAccount.name} to ${toAccount.name} (fee: ${response.fee_display})`
+          : `Transferred ${response.amount_display} from ${fromAccount.name} to ${toAccount.name}`
       });
     } catch (err) {
       next(err);
